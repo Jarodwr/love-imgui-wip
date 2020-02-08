@@ -71,70 +71,6 @@ end
 
 M.FLT_MAX = lib.igGET_FLT_MAX()
 
------------ImGui_ImplLove2D
-local ImGui_ImplLove2D = {}
-ImGui_ImplLove2D.__index = ImGui_ImplLove2D
-
-function ImGui_ImplLove2D.__new(sharedFontAtlas)
-    local context = lib.igCreateContext(sharedFontAtlas)
-    local io = lib.igGetIO()
-
-    local state = {
-        textureObject = love.graphics.newImage(
-            love.image.newImageData(
-                io.Fonts.TexWidth, io.Fonts.TexHeight, 'rgba8', io.Fonts.TexPixelsRGBA32
-            )
-        ),
-        vertexFormat = { 
-            {"VertexPosition", "float", 2}, 
-            {"VertexTexCoord", "float", 2}, 
-            {"VertexColor", "byte", 4}
-        }
-    }
-    return state
-end
-
-function ImGui_ImplLove2D.__shutdown()
-    lib.igShutDown()
-end
-
-function ImGui_ImplLove2D.__newFrame()
-    local height, width = love.graphics.getDimensions()
-    local io = lib.igGetIO()
-
-    io.DisplaySize = ImVec2(width, height)
-    io.DisplayFrameBufferScale = ImVec2(1.0, 1.0)
-
-    io.DeltaTime = love.timer.getDelta()
-
-    io.MouseDown[0] = self.mouse.pressed(1)
-    io.MouseDown[1] = self.mouse.pressed(2)
-    io.MouseDown[2] = self.mouse.pressed(3)
-
-    io.MouseWheel = self.mouse.wheel
-    self.mouse.wheel = 0
-
-    -- io.MouseDrawCursor
-    -- love.mouse.setVisible(not imgui.mouseDrawCursor)
-    lib.igNewFrame()
-end
-
-function ImGui_ImplLove2D.__mouseMoved(x, y)
-    lib.igGetIO().MousePos = love.window.hasMouseFocus() > 0 and ImVec2(x, y) or ImVec2(-1, -1)
-end
-
-function ImGui_ImplLove2D.__mousePressed(button)
-    self.mouse.pressed[button] = true
-end
-
-function ImGui_ImplLove2D.__mouseReleased(button)
-    self.mouse.pressed[button] = false
-end
-
-function ImGui_ImplLove2D.__wheelMoved(y)
-    self.mouse.wheel = y > 0 and 1 or y < 0 and -1 or 0
-end
-
 local keymap = {
     ["tab"] = 1,
     ["left"] = 2,
@@ -157,6 +93,125 @@ local keymap = {
     ["z"] = 19
 }
 
+-----------imgui
+local imgui = {}
+imgui.__index = imgui
+
+function imgui.__shutdown()
+    lib.igShutDown()
+end
+
+function imgui:render()
+    lib.igRender()
+    local drawData = lib.igGetDrawData()
+    do --Check if the frame buffer dimensions are both above 0
+        local io = lib.igGetIO()
+        local frameBufferWidth = io.DisplaySize.x * io.DisplayFramebufferScale.x
+        local frameBufferHeight = io.DisplaySize.y * io.DisplayFramebufferScale.y
+
+        if frameBufferWidth == 0 or frameBufferHeight == 0 then
+            return
+        end
+        lib.ImDrawData_ScaleClipRects(drawData, io.DisplayFramebufferScale)
+    end
+
+    for i = 0, drawData.CmdListsCount - 1 do
+        local cmdList = drawData.CmdLists[i]
+
+        local idx = {}
+        for j = 1, cmdList.IdxBuffer.Size do
+            idx[j] = cmdList.IdxBuffer.Data[j - 1] + 1
+        end
+
+        local verticesSize = cmdList.VtxBuffer.Size * ffi.sizeof "ImDrawVert"
+        local verticesData = ffi.string(cmdList.VtxBuffer.Data, verticesSize)
+
+        local renderMesh =
+            love.graphics.newMesh(
+            {
+                {"VertexPosition", "float", 2},
+                {"VertexTexCoord", "float", 2},
+                {"VertexColor", "byte", 4}
+            },
+            love.image.newImageData(verticesSize / 4, 1, "rgba8", verticesData)
+        )
+        renderMesh:setTexture(self.textureObject)
+        renderMesh:setVertexMap(idx)
+
+        local position = 1
+
+        for cmd_i = 0, cmdList.CmdBuffer.Size do
+            local pcmd = cmdList.CmdBuffer.Data[cmd_i]
+
+            local vertexCount = pcmd.ElemCount
+            local vertexPosition = position
+            position = position + pcmd.ElemCount
+
+            love.graphics.setBlendMode "alpha"
+            if pcmd.TextureId == nil then
+                renderMesh:setTexture(self.textureObject)
+            else
+                local currentTexture = pcmd.TextureId[0]
+                local texture = self.textures[currentTexture]
+                if texture:typeOf "Canvas" then
+                    love.graphics.setBlendMode("alpha", "premultiplied")
+                end
+                renderMesh:setTexture(texture)
+            end
+
+            love.graphics.setScissor(
+                pcmd.ClipRect.x,
+                pcmd.ClipRect.y,
+                pcmd.ClipRect.z - pcmd.ClipRect.x,
+                pcmd.ClipRect.w - pcmd.ClipRect.y
+            )
+            print(vertexPosition, vertexCount)
+            renderMesh:setDrawRange(vertexPosition, vertexCount)
+            love.graphics.draw(renderMesh)
+        end
+
+        love.graphics.setScissor()
+    end
+end
+
+function imgui:newFrame()
+    local height, width = love.graphics.getDimensions()
+    local io = lib.igGetIO()
+
+    io.DisplaySize = ImVec2(width, height)
+    io.DisplayFramebufferScale = ImVec2(1.0, 1.0)
+
+    io.DeltaTime = love.timer.getDelta()
+
+    io.MouseDown[0] = self.mouse.pressed[1]
+    io.MouseDown[1] = self.mouse.pressed[2]
+    io.MouseDown[2] = self.mouse.pressed[3]
+
+    io.MouseWheel = self.mouse.wheel
+    self.mouse.wheel = 0
+
+    love.mouse.setVisible(not io.MouseDrawCursor)
+    self.textures = nil
+
+    lib.igNewFrame()
+end
+
+function imgui:__mouseMoved(x, y)
+    lib.igGetIO().MousePos = love.window.hasMouseFocus() > 0 and ImVec2(x, y) or ImVec2(-1, -1)
+end
+
+function imgui:__mousePressed(button)
+    self.mouse.pressed[button] = true
+end
+
+function imgui:__mouseReleased(button)
+    self.mouse.pressed[button] = false
+end
+
+function imgui:__wheelMoved(y)
+    self.mouse.wheel = y > 0 and 1 or y < 0 and -1 or 0
+end
+
 local function update_key(button, pressed)
     local io = lib.igGetIO()
     io.KeysDown[keymap[button]] = pressed
@@ -166,44 +221,123 @@ local function update_key(button, pressed)
     io.KeySuper = love.keyboard.isDown("rsuper") or love.keyboard.isDown("lgui")
 end
 
-function ImGui_ImplLove2D.__keyPressed(button)
+function imgui:__keyPressed(button)
     update_key(button, true)
 end
 
-function ImGui_ImplLove2D.__keyReleased(button)
+function imgui:__keyReleased(button)
     update_key(button, false)
 end
 
-function ImGui_ImplLove2D.__textInput(text)
+function imgui:__textInput(text)
     lib.igGetIO().AddInputCharactersUTF8(text)
 end
 
-function ImGui_ImplLove2D.__getWantCapturedMouse()
+function imgui:__getWantCapturedMouse()
     return lib.igGetIO().WantCapturedMouse
 end
 
-function ImGui_ImplLove2D.__getWantCapturedKeyboard()
+function imgui:__getWantCapturedKeyboard()
     return lib.igGetIO().WantCapturedKeyboard
 end
 
-function ImGui_ImplLove2D.__getWantTextInput()
+function imgui:__getWantTextInput()
     return lib.igGetIO().WantTextInput
 end
 
-function ImGui_ImplLove2D.__setGlobalFontFromFileTTF()
-    local io = lib.igGetIO()
-end
+-- function imgui.__setGlobalFontFromFileTTF()
+--     local io = lib.igGetIO()
+-- end
 
-function ImGui_ImplLove2D.__getClipboardText()
-    return love.system.getClipboardText()
-end
+-- function imgui.__getClipboardText()
+--     return love.system.getClipboardText()
+-- end
 
-function ImGui_Impl_SetClipboardText(text)
-    
+-- function imgui.__SetClipboardText(text)
+-- end
+
+local function generateTextureObject(texture)
+    local pi = ffi.new("unsigned char*[1]")
+    local wi, hi = ffi.new("int[1]"), ffi.new("int[1]")
+    local bpp = ffi.new("int[1]")
+
+    lib.ImFontAtlas_GetTexDataAsRGBA32(texture, pi, wi, hi, bpp)
+
+    local width, height = wi[0], hi[0]
+    local pixels = ffi.string(pi[0], width * height * 4)
+    return love.graphics.newImage(love.image.newImageData(width, height, "rgba8", pixels))
 end
 
 M.CreateContext = function(sharedFontAtlas)
-    return ImGui_ImplLove2D.__new(sharedFontAtlas)
+    local context = lib.igCreateContext(sharedFontAtlas)
+    local io = lib.igGetIO()
+
+    local wrapper =
+        setmetatable(
+        {
+            context = context,
+            textures = {},
+            textureObject = generateTextureObject(io.Fonts),
+            time = 0,
+            mouse = {
+                pressed = {false, false, false},
+                justPressed = {false, false, false, false, false},
+                cursors = {},
+                wheel = 0
+            },
+            fontTexture = nil,
+            handle = {
+                shader = 0,
+                vert = 0,
+                frag = 0,
+                vbo = 0,
+                vao = 0,
+                elements = 0
+            },
+            attribLocation = {
+                tex = 0,
+                projMtx = 0,
+                position = 0,
+                uv = 0,
+                color = 0
+            }
+        },
+        imgui
+    )
+
+    for cursor_n = 0, lib.ImGuiMouseCursor_COUNT do
+        wrapper.mouse.cursors[cursor_n] = 0
+    end
+
+    io.KeyMap[lib.ImGuiKey_Tab] = keymap["tab"]
+    io.KeyMap[lib.ImGuiKey_LeftArrow] = keymap["left"]
+    io.KeyMap[lib.ImGuiKey_RightArrow] = keymap["right"]
+    io.KeyMap[lib.ImGuiKey_UpArrow] = keymap["up"]
+    io.KeyMap[lib.ImGuiKey_DownArrow] = keymap["down"]
+    io.KeyMap[lib.ImGuiKey_PageUp] = keymap["pageup"]
+    io.KeyMap[lib.ImGuiKey_PageDown] = keymap["pagedown"]
+    io.KeyMap[lib.ImGuiKey_Home] = keymap["home"]
+    io.KeyMap[lib.ImGuiKey_End] = keymap["end"]
+    io.KeyMap[lib.ImGuiKey_Delete] = keymap["delete"]
+    io.KeyMap[lib.ImGuiKey_Backspace] = keymap["backspace"]
+    io.KeyMap[lib.ImGuiKey_Enter] = keymap["return"]
+    io.KeyMap[lib.ImGuiKey_Escape] = keymap["escape"]
+    io.KeyMap[lib.ImGuiKey_A] = keymap["a"]
+    io.KeyMap[lib.ImGuiKey_C] = keymap["c"]
+    io.KeyMap[lib.ImGuiKey_V] = keymap["v"]
+    io.KeyMap[lib.ImGuiKey_X] = keymap["x"]
+    io.KeyMap[lib.ImGuiKey_Y] = keymap["y"]
+    io.KeyMap[lib.ImGuiKey_Z] = keymap["z"]
+
+    -- io.SetClipboardTextFn = ImGui_Impl_SetClipboardText;
+    -- io.GetClipboardTextFn = ImGui_Impl_GetClipboardText;
+
+    io.Fonts.TexID = nil
+
+    love.filesystem.createDirectory("/")
+    io.IniFilename = love.filesystem.getSaveDirectory() .. "/imgui.ini"
+
+    return wrapper
 end
 
 return M
