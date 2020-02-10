@@ -1,0 +1,21 @@
+return {
+    ["tab"] = 1,
+    ["left"] = 2,
+    ["right"] = 3,
+    ["up"] = 4,
+    ["down"] = 5,
+    ["pageup"] = 6,
+    ["pagedown"] = 7,
+    ["home"] = 8,
+    ["end"] = 9,
+    ["delete"] = 10,
+    ["backspace"] = 11,
+    ["return"] = 12,
+    ["escape"] = 13,
+    ["a"] = 14,
+    ["c"] = 15,
+    ["v"] = 16,
+    ["x"] = 17,
+    ["y"] = 18,
+    ["z"] = 19
+}

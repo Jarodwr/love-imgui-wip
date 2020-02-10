@@ -1,4 +1,4 @@
-local imgui = require "imgui.love"
+local imgui = require "imgui"
 
 local instance
 love.load = function(table)

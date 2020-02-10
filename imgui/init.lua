@@ -1,6 +1,7 @@
-local cimguimodule = "cimgui" --set imgui directory location
 local ffi = require "ffi"
-local cdecl = require "imgui.cdefs"
+
+local cdecl = require((...) .. ".cdefs")
+local keymap = require((...) .. ".keymap")
 
 local ffi_cdef = function(code)
     local ret, err = pcall(ffi.cdef, code)
@@ -15,11 +16,11 @@ local ffi_cdef = function(code)
     end
 end
 
-assert(cdecl, "imgui.lua not properly build")
+assert(cdecl, "cdefs.lua not properly build")
 ffi.cdef(cdecl)
 
 --load dll
-local lib = ffi.load(cimguimodule)
+local lib = ffi.load("cimgui")
 
 -----------ImVec2 definition
 local ImVec2
@@ -71,31 +72,97 @@ end
 
 M.FLT_MAX = lib.igGET_FLT_MAX()
 
-local keymap = {
-    ["tab"] = 1,
-    ["left"] = 2,
-    ["right"] = 3,
-    ["up"] = 4,
-    ["down"] = 5,
-    ["pageup"] = 6,
-    ["pagedown"] = 7,
-    ["home"] = 8,
-    ["end"] = 9,
-    ["delete"] = 10,
-    ["backspace"] = 11,
-    ["return"] = 12,
-    ["escape"] = 13,
-    ["a"] = 14,
-    ["c"] = 15,
-    ["v"] = 16,
-    ["x"] = 17,
-    ["y"] = 18,
-    ["z"] = 19
-}
-
 -----------imgui
 local imgui = {}
 imgui.__index = imgui
+
+local function generateTextureObject(texture)
+end
+
+M.CreateContext = function(sharedFontAtlas)
+    local context = lib.igCreateContext(sharedFontAtlas)
+    local io = lib.igGetIO()
+
+    local textureObject
+    do
+        local pi = ffi.new("unsigned char*[1]")
+        local wi, hi = ffi.new("int[1]"), ffi.new("int[1]")
+        local bpp = ffi.new("int[1]")
+    
+        lib.ImFontAtlas_GetTexDataAsRGBA32(io.Fonts, pi, wi, hi, bpp)
+    
+        local width, height = wi[0], hi[0]
+        local pixels = ffi.string(pi[0], width * height * 4)
+        textureObject = love.graphics.newImage(love.image.newImageData(width, height, "rgba8", pixels))
+    end
+
+    local wrapper =
+        setmetatable(
+        {
+            context = context,
+            textures = {},
+            textureObject = textureObject,
+            time = 0,
+            mouse = {
+                pressed = {false, false, false},
+                justPressed = {false, false, false, false, false},
+                cursors = {},
+                wheel = 0
+            },
+            fontTexture = nil,
+            -- handle = {
+            --     shader = 0,
+            --     vert = 0,
+            --     frag = 0,
+            --     vbo = 0,
+            --     vao = 0,
+            --     elements = 0
+            -- },
+            -- attribLocation = {
+            --     tex = 0,
+            --     projMtx = 0,
+            --     position = 0,
+            --     uv = 0,
+            --     color = 0
+            -- }
+        },
+        imgui
+    )
+
+    for cursor_n = 0, lib.ImGuiMouseCursor_COUNT do
+        wrapper.mouse.cursors[cursor_n] = 0
+    end
+
+    io.KeyMap[lib.ImGuiKey_Tab] = keymap["tab"]
+    io.KeyMap[lib.ImGuiKey_LeftArrow] = keymap["left"]
+    io.KeyMap[lib.ImGuiKey_RightArrow] = keymap["right"]
+    io.KeyMap[lib.ImGuiKey_UpArrow] = keymap["up"]
+    io.KeyMap[lib.ImGuiKey_DownArrow] = keymap["down"]
+    io.KeyMap[lib.ImGuiKey_PageUp] = keymap["pageup"]
+    io.KeyMap[lib.ImGuiKey_PageDown] = keymap["pagedown"]
+    io.KeyMap[lib.ImGuiKey_Home] = keymap["home"]
+    io.KeyMap[lib.ImGuiKey_End] = keymap["end"]
+    io.KeyMap[lib.ImGuiKey_Delete] = keymap["delete"]
+    io.KeyMap[lib.ImGuiKey_Backspace] = keymap["backspace"]
+    io.KeyMap[lib.ImGuiKey_Enter] = keymap["return"]
+    io.KeyMap[lib.ImGuiKey_Escape] = keymap["escape"]
+    io.KeyMap[lib.ImGuiKey_A] = keymap["a"]
+    io.KeyMap[lib.ImGuiKey_C] = keymap["c"]
+    io.KeyMap[lib.ImGuiKey_V] = keymap["v"]
+    io.KeyMap[lib.ImGuiKey_X] = keymap["x"]
+    io.KeyMap[lib.ImGuiKey_Y] = keymap["y"]
+    io.KeyMap[lib.ImGuiKey_Z] = keymap["z"]
+
+    -- io.SetClipboardTextFn = ImGui_Impl_SetClipboardText;
+    -- io.GetClipboardTextFn = ImGui_Impl_GetClipboardText;
+
+    io.Fonts.TexID = nil
+
+    love.filesystem.createDirectory("/")
+    io.IniFilename = love.filesystem.getSaveDirectory() .. "/imgui.ini"
+
+    return wrapper
+end
 
 function imgui.__shutdown()
     lib.igShutDown()
@@ -247,99 +314,22 @@ function imgui:__getWantTextInput()
     return lib.igGetIO().WantTextInput
 end
 
--- function imgui.__setGlobalFontFromFileTTF()
---     local io = lib.igGetIO()
--- end
-
--- function imgui.__getClipboardText()
---     return love.system.getClipboardText()
--- end
-
--- function imgui.__SetClipboardText(text)
--- end
-
-local function generateTextureObject(texture)
-    local pi = ffi.new("unsigned char*[1]")
-    local wi, hi = ffi.new("int[1]"), ffi.new("int[1]")
-    local bpp = ffi.new("int[1]")
-
-    lib.ImFontAtlas_GetTexDataAsRGBA32(texture, pi, wi, hi, bpp)
-
-    local width, height = wi[0], hi[0]
-    local pixels = ffi.string(pi[0], width * height * 4)
-    return love.graphics.newImage(love.image.newImageData(width, height, "rgba8", pixels))
+function imgui.__setGlobalFontFromFileTTF(path, sizePixels, spacingX, spacingY, oversampleX, oversampleY)
+    local io = lib.igGetIO()
+    local conf = ffi.new("ImFontConfig")
+    conf.OversampleH = oversampleX;
+    conf.OversampleV = oversampleY;
+    conf.GlyphExtraSpacing.x = spacingX;
+    conf.GlyphExtraSpacing.y = spacingY;
+    lib.ImFontAtlas_AddFontFromFileTTF(io.fonts, path, sizePixels, conf)
 end
 
-M.CreateContext = function(sharedFontAtlas)
-    local context = lib.igCreateContext(sharedFontAtlas)
-    local io = lib.igGetIO()
+function imgui.__getClipboardText()
+    return love.system.getClipboardText()
+end
 
-    local wrapper =
-        setmetatable(
-        {
-            context = context,
-            textures = {},
-            textureObject = generateTextureObject(io.Fonts),
-            time = 0,
-            mouse = {
-                pressed = {false, false, false},
-                justPressed = {false, false, false, false, false},
-                cursors = {},
-                wheel = 0
-            },
-            fontTexture = nil,
-            handle = {
-                shader = 0,
-                vert = 0,
-                frag = 0,
-                vbo = 0,
-                vao = 0,
-                elements = 0
-            },
-            attribLocation = {
-                tex = 0,
-                projMtx = 0,
-                position = 0,
-                uv = 0,
-                color = 0
-            }
-        },
-        imgui
-    )
-
-    for cursor_n = 0, lib.ImGuiMouseCursor_COUNT do
-        wrapper.mouse.cursors[cursor_n] = 0
-    end
-
-    io.KeyMap[lib.ImGuiKey_Tab] = keymap["tab"]
-    io.KeyMap[lib.ImGuiKey_LeftArrow] = keymap["left"]
-    io.KeyMap[lib.ImGuiKey_RightArrow] = keymap["right"]
-    io.KeyMap[lib.ImGuiKey_UpArrow] = keymap["up"]
-    io.KeyMap[lib.ImGuiKey_DownArrow] = keymap["down"]
-    io.KeyMap[lib.ImGuiKey_PageUp] = keymap["pageup"]
-    io.KeyMap[lib.ImGuiKey_PageDown] = keymap["pagedown"]
-    io.KeyMap[lib.ImGuiKey_Home] = keymap["home"]
-    io.KeyMap[lib.ImGuiKey_End] = keymap["end"]
-    io.KeyMap[lib.ImGuiKey_Delete] = keymap["delete"]
-    io.KeyMap[lib.ImGuiKey_Backspace] = keymap["backspace"]
-    io.KeyMap[lib.ImGuiKey_Enter] = keymap["return"]
-    io.KeyMap[lib.ImGuiKey_Escape] = keymap["escape"]
-    io.KeyMap[lib.ImGuiKey_A] = keymap["a"]
-    io.KeyMap[lib.ImGuiKey_C] = keymap["c"]
-    io.KeyMap[lib.ImGuiKey_V] = keymap["v"]
-    io.KeyMap[lib.ImGuiKey_X] = keymap["x"]
-    io.KeyMap[lib.ImGuiKey_Y] = keymap["y"]
-    io.KeyMap[lib.ImGuiKey_Z] = keymap["z"]
-
-    -- io.SetClipboardTextFn = ImGui_Impl_SetClipboardText;
-    -- io.GetClipboardTextFn = ImGui_Impl_GetClipboardText;
-
-    io.Fonts.TexID = nil
-
-    love.filesystem.createDirectory("/")
-    io.IniFilename = love.filesystem.getSaveDirectory() .. "/imgui.ini"
-
-    return wrapper
+function imgui.__SetClipboardText(text)
+    love.system.setClipboardText(text)
 end
 
 return M
