@@ -140,9 +140,8 @@ function imgui:render()
 
         local position = 1
 
-        for cmd_i = 0, cmdList.CmdBuffer.Size do
+        for cmd_i = 0, cmdList.CmdBuffer.Size-1 do
             local pcmd = cmdList.CmdBuffer.Data[cmd_i]
-
             local vertexCount = pcmd.ElemCount
             local vertexPosition = position
             position = position + pcmd.ElemCount
@@ -165,7 +164,7 @@ function imgui:render()
                 pcmd.ClipRect.z - pcmd.ClipRect.x,
                 pcmd.ClipRect.w - pcmd.ClipRect.y
             )
-            print(vertexPosition, vertexCount)
+            
             renderMesh:setDrawRange(vertexPosition, vertexCount)
             love.graphics.draw(renderMesh)
         end
@@ -191,13 +190,14 @@ function imgui:newFrame()
     self.mouse.wheel = 0
 
     love.mouse.setVisible(not io.MouseDrawCursor)
+    
     self.textures = nil
 
     lib.igNewFrame()
 end
 
 function imgui:__mouseMoved(x, y)
-    lib.igGetIO().MousePos = love.window.hasMouseFocus() > 0 and ImVec2(x, y) or ImVec2(-1, -1)
+    lib.igGetIO().MousePos = love.window.hasMouseFocus() and ImVec2(x, y) or ImVec2(-1, -1)
 end
 
 function imgui:__mousePressed(button)
@@ -214,11 +214,13 @@ end
 
 local function update_key(button, pressed)
     local io = lib.igGetIO()
-    io.KeysDown[keymap[button]] = pressed
+    if keymap[button] then
+        io.KeysDown[keymap[button]] = pressed
+    end
     io.KeyShift = love.keyboard.isDown("rshift") or love.keyboard.isDown("lshift")
     io.KeyCtrl = love.keyboard.isDown("rctrl") or love.keyboard.isDown("lctrl")
     io.KeyAlt = love.keyboard.isDown("ralt") or love.keyboard.isDown("lalt")
-    io.KeySuper = love.keyboard.isDown("rsuper") or love.keyboard.isDown("lgui")
+    io.KeySuper = love.keyboard.isDown("rgui") or love.keyboard.isDown("lgui")
 end
 
 function imgui:__keyPressed(button)
