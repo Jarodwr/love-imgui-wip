@@ -241,7 +241,7 @@ function imgui:render()
 end
 
 function imgui:newFrame()
-    local height, width = love.graphics.getDimensions()
+    local width, height = love.graphics.getDimensions()
     local io = lib.igGetIO()
 
     io.DisplaySize = ImVec2(width, height)
