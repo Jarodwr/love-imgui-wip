@@ -28,8 +28,12 @@ love.mousemoved = function(x, y)
 
 end
 
-love.mousepressed = function(button)
+love.mousepressed = function(x, y, button, istouch, presses)
     instance:__mousePressed(button)
+end
+
+love.mousereleased = function(x, y, button)
+    instance:__mouseReleased(button)
 end
 
 love.wheelmoved = function(y)
